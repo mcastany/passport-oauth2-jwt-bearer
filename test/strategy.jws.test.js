@@ -8,8 +8,9 @@ describe('Strategy', function() {
   var strategy = new Strategy(
     { audience: 'https://jwt-rp.example.net' },
     function(issuer, done) {
-      if (issuer != 'https://jwt-idp.example.com') { return done('unexpected issuer'); }
-      return fs.readFile(__dirname + '/keys/rsa/cert.pem', 'utf8', done);
+      if (issuer == 'https://jwt-idp.example.com') { return fs.readFile(__dirname + '/keys/rsa/cert.pem', 'utf8', done);}
+      if (issuer == 'https://jwt-idp2.example.com') { return done(null, "invalid-cert"); }
+      return done('unexpected issuer');
     },
     function(issuer, headers, payload, done) {
       return done(null, { id: '1234', issuer: issuer, subject: payload.sub });
@@ -383,5 +384,35 @@ describe('Strategy', function() {
       expect(status).to.be.undefined;
     });
   });
-  
+
+  describe('handling a request with an invalid certificate', function(){
+    var error;
+    
+    before(function(done) {
+      chai.passport.use(strategy)
+        .error(function(err) {
+          error = err;
+          done();
+        })
+        .req(function(req) {
+          // header = { "typ": "JWT", "alg": "RS256" }
+          // payload ={
+          //   "sub": "mailto:mike@example.com",
+          //   "iat": 1490906733,
+          //   "aud": "https://jwt-rp.example.net",
+          //   "iss": "https://jwt-idp2.example.com"
+          // }
+          
+          req.body = {
+            'client_assertion_type': 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+            'client_assertion': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJtYWlsdG86bWlrZUBleGFtcGxlLmNvbSIsImlhdCI6MTQ5MDkwNzU1OSwiZXhwIjo0NjM2NDYyMzU1NTksImF1ZCI6Imh0dHBzOi8vand0LXJwLmV4YW1wbGUubmV0IiwiaXNzIjoiaHR0cHM6Ly9qd3QtaWRwMi5leGFtcGxlLmNvbSJ9.T5R_OufwYFc5Deob_74Tsko3AkwShYwiINt8pSP5yGwUVO3MMDMUwO02sk0i1-Mx0tPq-1_mjUbzxt4JuPTcpX48rPNYxNqEslKMWfVvZI5VFNeBGYnIXN2HdYfUOSrIsCQXe7JqB1xuQBFjgGGCedJVkzBZa2xQl3CX_CJAoTw'
+          };
+        })
+        .authenticate();
+    });
+    
+    it('should return the error', function() {
+      expect(error.message).to.equal('PEM_read_bio_PUBKEY failed');
+    });
+  });
 });
